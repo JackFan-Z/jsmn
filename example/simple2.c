@@ -1,0 +1,75 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "../jsmn.h"
+
+/*
+ * A small example of jsmn parsing when JSON structure is known and number of
+ * tokens is predictable.
+ */
+
+static const char *JSON_STRING =
+	"{\"user\": \"johndoe\", \"admin\": false, \"uid\": 1000,\n  "
+	"\"groups\": [\"users\", \"wheel\", \"audio\", \"video\"]}";
+
+static int jsoneq(const char *json, jsmntok_t *tok, const char *s) {
+	if (tok->type == JSMN_STRING && (int) strlen(s) == tok->end - tok->start &&
+			strncmp(json + tok->start, s, tok->end - tok->start) == 0) {
+		return 0;
+	}
+	return -1;
+}
+
+typedef int (*callbackParseValue)(int idxKey, const char* pKey, const char* pValue, int size);
+
+int jsmnParse(const char* JSON_STRING, char** pKeys, int keyCount, callbackParseValue cb)
+{
+	int i, j;
+	int r;
+	jsmn_parser p;
+	jsmntok_t t[128]; /* We expect no more than 128 tokens */
+
+	jsmn_init(&p);
+	r = jsmn_parse(&p, JSON_STRING, strlen(JSON_STRING), t, sizeof(t)/sizeof(t[0]));
+	printf("r = %d\n", r);
+	if (r < 0) {
+		printf("Failed to parse JSON: %d\n", r);
+		return -1;
+	}
+
+	/* Assume the top-level element is an object */
+	if (r < 1 || t[0].type != JSMN_OBJECT) {
+		printf("Object expected\n");
+		return -2;
+	}
+
+	/* Loop over all keys of the root object */
+	int k = 0;
+	for (i = 1; i < r; i++) {
+        for (j = 0; j < keyCount; j++)
+        {
+            if (jsoneq(JSON_STRING, &t[i], pKeys[j]) == 0) {
+				if (cb)
+				{
+					cb(j, pKeys[j], JSON_STRING + t[i+1].start, t[i+1].end-t[i+1].start);
+				}
+                i++;
+            }
+        }
+    }
+    return 0;
+}
+
+static int myParseValue(int idxKey, const char* pKey, const char* pValue, int size)
+{
+	printf("[%d]%s: %.*s\n", idxKey, pKey, size, pValue);
+}
+
+#define KEY_COUNT 3
+#define VALUE_MAX 20
+int main() {
+	int i;
+	char* pKeys[KEY_COUNT] = { "user", "admin", "uid"};
+	jsmnParse(JSON_STRING, pKeys, KEY_COUNT, &myParseValue);
+	return EXIT_SUCCESS;
+}
